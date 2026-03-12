@@ -1,0 +1,92 @@
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi.responses import FileResponse
+from sqlalchemy.orm import Session
+
+from api.models.files import FileListResponse, FileResponse as FileResponseModel
+from api.services.file_service import FileService
+from db.database import get_db
+from db.models import UserRecord
+from utils.jwt import get_current_user
+from utils.files import save_uploaded_file
+
+router = APIRouter(prefix="/files", tags=["files"])
+
+
+@router.post("/upload", response_model=FileResponseModel, status_code=status.HTTP_201_CREATED)
+async def upload_file(
+    file: UploadFile = File(...),
+    current_user: UserRecord = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Upload a file. Stored under files/{user_id}/. Returns metadata."""
+    if not file.filename:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Filename is required",
+        )
+
+    # Save file to disk
+    file_metadata = await save_uploaded_file(file, current_user.id)
+    
+    # Save file record to database
+    file_record = FileService.create_file_record(
+        db=db,
+        user_id=current_user.id,
+        original_filename=file_metadata["original_filename"],
+        stored_filename=file_metadata["stored_filename"],
+        content_type=file_metadata["content_type"],
+        size=file_metadata["size"],
+        path=file_metadata["path"],
+    )
+    
+    return file_record
+
+
+@router.get("/list", response_model=FileListResponse, status_code=status.HTTP_200_OK)
+async def list_files(
+    current_user: UserRecord = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """List all files uploaded by the current user."""
+    files = FileService.get_user_files(db, current_user.id)
+    return {"files": files}
+
+
+@router.get("/{file_id}/info", response_model=FileResponseModel, status_code=status.HTTP_200_OK)
+async def get_file_info(
+    file_id: int,
+    current_user: UserRecord = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Retrieve file metadata from database by ID. Only the file owner can access it."""
+    file_record = FileService.get_file_by_id(db, file_id)
+    FileService.verify_file_ownership(file_record, current_user.id)
+    return file_record
+
+
+@router.get("/{file_id}", status_code=status.HTTP_200_OK)
+async def get_file(
+    file_id: int,
+    current_user: UserRecord = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Download a specific file by ID. Only the file owner can access it."""
+    file_record = FileService.get_file_by_id(db, file_id)
+    FileService.verify_file_ownership(file_record, current_user.id)
+    
+    # Check if file exists on disk
+    file_path = Path(file_record.path)
+    if not file_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="File not found on disk",
+        )
+    
+    # Return the file
+    return FileResponse(
+        path=file_path,
+        media_type=file_record.content_type,
+        filename=file_record.original_filename,
+    )

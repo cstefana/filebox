@@ -1,17 +1,15 @@
 import uvicorn
 from fastapi import FastAPI
+from api.lifespan import lifespan
 from db.database import engine, Base
-from api.routes import user_routes
-
+from api.routes import auth_router, core_router, files_router
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI()
-app.include_router(user_routes.router)
+app = FastAPI(lifespan=lifespan)
 
-
-@app.get("/")
-def read_root():
-    return {"Hello": "World"}
+app.include_router(core_router)
+app.include_router(auth_router)
+app.include_router(files_router)
 
 
 def main():

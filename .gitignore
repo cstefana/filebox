@@ -8,3 +8,11 @@ wheels/
 
 # Virtual environments
 .venv
+
+# env
+
+config.env
+
+# files folder
+
+files/
