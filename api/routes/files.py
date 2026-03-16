@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -9,7 +9,6 @@ from api.services.file_service import FileService
 from db.database import get_db
 from db.models import UserRecord
 from utils.jwt import get_current_user
-from utils.files import save_uploaded_file
 
 router = APIRouter(prefix="/files", tags=["files"])
 
@@ -27,20 +26,13 @@ async def upload_file(
             detail="Filename is required",
         )
 
-    # Save file to disk
-    file_metadata = await save_uploaded_file(file, current_user.id)
-    
-    # Save file record to database
-    file_record = FileService.create_file_record(
+    service = FileService()
+    file_record = await service.store_and_record(
+        file=file,
         db=db,
         user_id=current_user.id,
-        original_filename=file_metadata["original_filename"],
-        stored_filename=file_metadata["stored_filename"],
-        content_type=file_metadata["content_type"],
-        size=file_metadata["size"],
-        path=file_metadata["path"],
     )
-    
+
     return file_record
 
 
@@ -51,6 +43,17 @@ async def list_files(
 ):
     """List all files uploaded by the current user."""
     files = FileService.get_user_files(db, current_user.id)
+    return {"files": files}
+
+
+@router.get("/search", response_model=FileListResponse, status_code=status.HTTP_200_OK)
+async def search_files(
+    query: str = Query(..., min_length=1, description="Full-text search query"),
+    current_user: UserRecord = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Search file metadata by file content for the current user."""
+    files = FileService.search_user_files_by_content(db, current_user.id, query)
     return {"files": files}
 
 

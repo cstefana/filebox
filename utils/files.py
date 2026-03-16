@@ -18,13 +18,13 @@ async def save_uploaded_file(file: UploadFile, user_id: int) -> dict:
         user_id: The ID of the user uploading the file
         
     Returns:
-        Dictionary with file metadata (original_filename, stored_filename, content_type, size, path)
+        Dictionary with file metadata (original_filename, stored_filename, content_type, size, path, raw_bytes)
     """
     # Extract original filename and extension
     original_name = Path(file.filename).name
     file_ext = Path(file.filename).suffix
     
-    # Generate unique filename: timestamp_uuid.ext
+    # Generate unique filename using timestamp
     timestamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S")
     unique_id = str(uuid.uuid4())[:8]
     stored_filename = f"{timestamp}_{unique_id}{file_ext}"
@@ -44,4 +44,5 @@ async def save_uploaded_file(file: UploadFile, user_id: int) -> dict:
         "content_type": file.content_type or "application/octet-stream",
         "size": len(content),
         "path": str(dest),
+        "raw_bytes": content,
     }

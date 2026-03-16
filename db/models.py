@@ -2,11 +2,13 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     func,
 )
 from sqlalchemy.orm import relationship
+from sqlalchemy.dialects.postgresql import TSVECTOR
 
 from db.database import Base
 
@@ -39,3 +41,24 @@ class FileRecord(Base):
     
     # Relationship to user
     user = relationship("UserRecord", back_populates="files")
+    content = relationship("FileContentRecord", back_populates="file", uselist=False, cascade="all, delete-orphan")
+
+
+class FileContentRecord(Base):
+    __tablename__ = "file_content"
+
+    file_id = Column(Integer, ForeignKey("files.id"), primary_key=True)
+    # Use a GIN index in Postgres for efficient full-text search.
+    # We declare the index explicitly instead of using index=True to avoid a default btree index,
+    # which can hit Postgres row-size limits for large tsvectors.
+    content_tsv = Column(TSVECTOR, nullable=False)
+
+    __table_args__ = (
+        Index(
+            "ix_file_content_content_tsv",
+            "content_tsv",
+            postgresql_using="gin",
+        ),
+    )
+
+    file = relationship("FileRecord", back_populates="content")

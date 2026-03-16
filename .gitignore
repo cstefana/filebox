@@ -16,3 +16,5 @@ config.env
 # files folder
 
 files/
+
+filebox.db
