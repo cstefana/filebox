@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, 
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
-from api.models.files import FileListResponse, FileResponse as FileResponseModel
+from api.models.files import FileListResponse, FileQueryRequest, FileQueryResponse, FileResponse as FileResponseModel
 from api.services.file_service import FileService
 from db.database import get_db
 from db.models import UserRecord
@@ -46,7 +46,7 @@ async def list_files(
     return {"files": files}
 
 
-@router.get("/search", response_model=FileListResponse, status_code=status.HTTP_200_OK)
+@router.get("/search_content", response_model=FileListResponse, status_code=status.HTTP_200_OK)
 async def search_files(
     query: str = Query(..., min_length=1, description="Full-text search query"),
     current_user: UserRecord = Depends(get_current_user),
@@ -80,11 +80,11 @@ async def get_file(
     FileService.verify_file_ownership(file_record, current_user.id)
     
     # Check if file exists on disk
-    file_path = Path(file_record.path)
+    file_path = FileService.resolve_file_path(file_record.path)
     if not file_path.exists():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="File not found on disk",
+            detail=f"File not found on disk. Looked for: {file_path}",
         )
     
     # Return the file
@@ -93,3 +93,24 @@ async def get_file(
         media_type=file_record.content_type,
         filename=file_record.original_filename,
     )
+
+
+@router.post("/query", response_model=FileQueryResponse, status_code=status.HTTP_200_OK)
+async def query_files_with_ai(
+    request: FileQueryRequest,
+    current_user: UserRecord = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Query the Groq AI model about your files using GPT-OSS-120B.
+    
+    Provide a question about your files and optionally specify which files to query.
+    If no file IDs are provided, all your files will be used as context.
+    """
+    response, files_used = FileService.query_user_files_with_ai(
+        db=db,
+        user_id=current_user.id,
+        user_query=request.query,
+        file_ids=request.file_ids,
+    )
+    
+    return FileQueryResponse(response=response, files_used=files_used)

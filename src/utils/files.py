@@ -5,7 +5,9 @@ from datetime import datetime
 from fastapi import UploadFile
 
 
-UPLOAD_DIR = Path("files")
+# Get the project root (one level up from src/)
+PROJECT_ROOT = Path(__file__).parent.parent.parent
+UPLOAD_DIR = PROJECT_ROOT / "files"
 
 
 async def save_uploaded_file(file: UploadFile, user_id: int) -> dict:
@@ -38,11 +40,14 @@ async def save_uploaded_file(file: UploadFile, user_id: int) -> dict:
     content = await file.read()
     dest.write_bytes(content)
 
+    # Return relative path from project root for database storage
+    relative_path = dest.relative_to(PROJECT_ROOT)
+    
     return {
         "original_filename": original_name,
         "stored_filename": stored_filename,
         "content_type": file.content_type or "application/octet-stream",
         "size": len(content),
-        "path": str(dest),
+        "path": str(relative_path),
         "raw_bytes": content,
     }
